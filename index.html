@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>备忘录</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+
+        .input-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 2rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #764ba2;
+        }
+
+        .todo-list {
+            list-style: none;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            gap: 10px;
+        }
+
+        .todo-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+
+        .todo-item.completed span {
+            text-decoration: line-through;
+            color: #888;
+        }
+
+        .delete-btn {
+            margin-left: auto;
+            background: #dc3545;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+
+        .auth-container {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .auth-form {
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        .auth-form.active {
+            display: block;
+        }
+
+        .auth-form input {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .user-info {
+            display: none;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .user-info.active {
+            display: block;
+        }
+
+        .main-content {
+            display: none;
+        }
+
+        .main-content.active {
+            display: block;
+        }
+
+        .error-message {
+            color: #dc3545;
+            margin: 10px 0;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>备忘录</h1>
+        
+        <!-- 认证部分 -->
+        <div class="auth-container">
+            <!-- 登录表单 -->
+            <div id="loginForm" class="auth-form active">
+                <h3>登录</h3>
+                <input type="email" id="loginEmail" placeholder="邮箱" required>
+                <input type="password" id="loginPassword" placeholder="密码" required>
+                <button onclick="login()">登录</button>
+                <p>还没有账号？<a href="#" onclick="toggleForms()">注册</a></p>
+                <div id="loginError" class="error-message"></div>
+            </div>
+
+            <!-- 注册表单 -->
+            <div id="signupForm" class="auth-form">
+                <h3>注册</h3>
+                <input type="email" id="signupEmail" placeholder="邮箱" required>
+                <input type="password" id="signupPassword" placeholder="密码" required>
+                <button onclick="signup()">注册</button>
+                <p>已有账号？<a href="#" onclick="toggleForms()">登录</a></p>
+                <div id="signupError" class="error-message"></div>
+            </div>
+
+            <!-- 用户信息 -->
+            <div id="userInfo" class="user-info">
+                <p>当前用户：<span id="userEmail"></span></p>
+                <button onclick="logout()">登出</button>
+            </div>
+        </div>
+
+        <!-- 主要内容 -->
+        <div id="mainContent" class="main-content">
+            <div class="input-section">
+                <input type="text" id="todoInput" placeholder="添加新的待办事项...">
+                <button onclick="addTodo()">添加</button>
+            </div>
+            <ul id="todoList" class="todo-list">
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyD5LRHb99wLKnVjjEjIvuUyRcdiodAVWA8",
+            authDomain: "qingdan-92ca2.firebaseapp.com",
+            databaseURL: "https://qingdan-92ca2-default-rtdb.firebaseio.com",
+            projectId: "qingdan-92ca2",
+            storageBucket: "qingdan-92ca2.firebasestorage.app",
+            messagingSenderId: "536572937195",
+            appId: "1:536572937195:web:6f06a69b46c94b3bdbcfae",
+            measurementId: "G-ET6BGMRMSQ"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const auth = firebase.auth();
+        let currentUser = null;
+        let todosRef = null;
+
+        // 切换登录/注册表单
+        function toggleForms() {
+            document.getElementById('loginForm').classList.toggle('active');
+            document.getElementById('signupForm').classList.toggle('active');
+        }
+
+        // 注册
+        function signup() {
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            
+            auth.createUserWithEmailAndPassword(email, password)
+                .catch((error) => {
+                    document.getElementById('signupError').textContent = error.message;
+                });
+        }
+
+        // 登录
+        function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            auth.signInWithEmailAndPassword(email, password)
+                .catch((error) => {
+                    document.getElementById('loginError').textContent = error.message;
+                });
+        }
+
+        // 登出
+        function logout() {
+            auth.signOut();
+        }
+
+        // 监听认证状态变化
+        auth.onAuthStateChanged((user) => {
+            currentUser = user;
+            if (user) {
+                // 用户已登录
+                document.getElementById('userEmail').textContent = user.email;
+                document.getElementById('userInfo').classList.add('active');
+                document.getElementById('mainContent').classList.add('active');
+                document.getElementById('loginForm').classList.remove('active');
+                document.getElementById('signupForm').classList.remove('active');
+                
+                // 设置该用户的数据引用
+                todosRef = db.ref('users/' + user.uid + '/todos');
+                loadTodos();
+            } else {
+                // 用户未登录
+                document.getElementById('userInfo').classList.remove('active');
+                document.getElementById('mainContent').classList.remove('active');
+                document.getElementById('loginForm').classList.add('active');
+                todosRef = null;
+            }
+        });
+
+        // 从 Firebase 加载待办事项
+        function loadTodos() {
+            if (!todosRef) return;
+            
+            todosRef.on('value', (snapshot) => {
+                const todoList = document.getElementById('todoList');
+                todoList.innerHTML = '';
+                
+                const todos = snapshot.val() || {};
+                Object.entries(todos).forEach(([key, todo]) => {
+                    const li = createTodoElement(todo.text, todo.completed, key);
+                    todoList.appendChild(li);
+                });
+            });
+        }
+
+        // 创建待办事项元素
+        function createTodoElement(text, completed = false, key) {
+            const li = document.createElement('li');
+            li.className = 'todo-item';
+            if (completed) {
+                li.classList.add('completed');
+            }
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = completed;
+            checkbox.onclick = function() {
+                const isCompleted = li.classList.toggle('completed');
+                todosRef.child(key).update({
+                    completed: isCompleted
+                });
+            };
+
+            const span = document.createElement('span');
+            span.textContent = text;
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '删除';
+            deleteBtn.onclick = function() {
+                todosRef.child(key).remove();
+            };
+
+            li.appendChild(checkbox);
+            li.appendChild(span);
+            li.appendChild(deleteBtn);
+            
+            return li;
+        }
+
+        function addTodo() {
+            if (!currentUser) return;
+            
+            const input = document.getElementById('todoInput');
+            const text = input.value.trim();
+            
+            if (text === '') return;
+
+            todosRef.push({
+                text: text,
+                completed: false,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            input.value = '';
+        }
+
+        // 添加回车键支持
+        document.getElementById('todoInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addTodo();
+            }
+        });
+    </script>
+</body>
+</html> 
